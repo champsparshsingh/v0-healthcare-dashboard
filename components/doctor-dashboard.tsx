@@ -1,6 +1,7 @@
 "use client"
 
-import { useHealth, BloodPressureReading } from "@/lib/health-context"
+import { useMemo } from "react"
+import { useHealth, BloodPressureReading, TimeOfDay } from "@/lib/health-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,8 +22,11 @@ import {
   Scale,
   Phone,
   Mail,
+  Sun,
+  Sunset,
+  Moon,
 } from "lucide-react"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 
 function getStatusColor(status: BloodPressureReading["status"]) {
   switch (status) {
@@ -35,6 +39,21 @@ function getStatusColor(status: BloodPressureReading["status"]) {
     case "low":
       return "bg-blue-500/20 text-blue-400 border-blue-500/30"
   }
+}
+
+function getTimeOfDayIcon(timeOfDay: TimeOfDay) {
+  switch (timeOfDay) {
+    case "morning":
+      return Sun
+    case "afternoon":
+      return Sunset
+    case "evening":
+      return Moon
+  }
+}
+
+function getTimeOfDayLabel(timeOfDay: TimeOfDay) {
+  return timeOfDay.charAt(0).toUpperCase() + timeOfDay.slice(1)
 }
 
 function calculateTrend(readings: BloodPressureReading[]): "improving" | "worsening" | "stable" {
@@ -53,7 +72,6 @@ function calculateTrend(readings: BloodPressureReading[]): "improving" | "worsen
   const systolicDiff = avgSystolic - oldAvgSystolic
   const diastolicDiff = avgDiastolic - oldAvgDiastolic
 
-  // If BP is decreasing towards normal range, it's improving
   if (systolicDiff < -5 || diastolicDiff < -3) return "improving"
   if (systolicDiff > 5 || diastolicDiff > 3) return "worsening"
   return "stable"
@@ -82,8 +100,45 @@ function getOverallCondition(readings: BloodPressureReading[]): {
   return { label: "Healthy", color: "text-emerald-400", icon: CheckCircle }
 }
 
+interface DailyReadings {
+  date: string
+  formattedDate: string
+  readings: {
+    morning?: BloodPressureReading
+    afternoon?: BloodPressureReading
+    evening?: BloodPressureReading
+  }
+  completedCount: number
+}
+
 export function DoctorDashboard() {
   const { patient, readings, logoutDoctor } = useHealth()
+
+  // Group readings by date
+  const dailyReadings = useMemo(() => {
+    const grouped = new Map<string, DailyReadings>()
+
+    readings.forEach((reading) => {
+      const dateKey = reading.date || format(new Date(reading.timestamp), "yyyy-MM-dd")
+
+      if (!grouped.has(dateKey)) {
+        grouped.set(dateKey, {
+          date: dateKey,
+          formattedDate: format(parseISO(dateKey), "EEEE, MMMM d, yyyy"),
+          readings: {},
+          completedCount: 0,
+        })
+      }
+
+      const day = grouped.get(dateKey)!
+      if (reading.timeOfDay && !day.readings[reading.timeOfDay]) {
+        day.readings[reading.timeOfDay] = reading
+        day.completedCount++
+      }
+    })
+
+    return Array.from(grouped.values()).sort((a, b) => b.date.localeCompare(a.date))
+  }, [readings])
 
   if (!patient) {
     return (
@@ -111,6 +166,9 @@ export function DoctorDashboard() {
   const avgDiastolic = readings.length > 0
     ? Math.round(readings.slice(0, 10).reduce((sum, r) => sum + r.diastolic, 0) / Math.min(readings.length, 10))
     : 0
+
+  const totalDays = dailyReadings.length
+  const completeDays = dailyReadings.filter((d) => d.completedCount === 3).length
 
   return (
     <div className="space-y-6">
@@ -236,37 +294,182 @@ export function DoctorDashboard() {
             </div>
 
             <div className="text-center text-sm text-muted-foreground">
-              {readings.length} total readings recorded
+              {readings.length} total readings over {totalDays} days ({completeDays} complete)
             </div>
           </CardContent>
         </Card>
 
-        {/* Alerts Card */}
+        {/* Monitoring Schedule Card */}
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-foreground">
-              <AlertTriangle className="h-5 w-5 text-primary" />
-              Health Alerts
+              <Calendar className="h-5 w-5 text-primary" />
+              Monitoring Schedule
             </CardTitle>
-            <CardDescription>Recent abnormal readings</CardDescription>
+            <CardDescription>3 readings per day: Morning, Afternoon, Evening</CardDescription>
           </CardHeader>
           <CardContent>
-            {readings.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">
-                No readings available yet
-              </p>
-            ) : (
-              <div className="space-y-3 max-h-64 overflow-y-auto">
-                {readings
-                  .filter((r) => r.status !== "normal")
-                  .slice(0, 5)
-                  .map((reading) => (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Sun className="h-5 w-5 text-yellow-400" />
+                  <span className="text-foreground font-medium">Morning</span>
+                </div>
+                <span className="text-xs text-muted-foreground">6:00 AM - 12:00 PM</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Sunset className="h-5 w-5 text-orange-400" />
+                  <span className="text-foreground font-medium">Afternoon</span>
+                </div>
+                <span className="text-xs text-muted-foreground">12:00 PM - 6:00 PM</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <Moon className="h-5 w-5 text-blue-400" />
+                  <span className="text-foreground font-medium">Evening</span>
+                </div>
+                <span className="text-xs text-muted-foreground">6:00 PM - 12:00 AM</span>
+              </div>
+
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Compliance Rate:</span>
+                  <span className="text-foreground font-bold">
+                    {totalDays > 0 ? Math.round((completeDays / totalDays) * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Daily Readings History */}
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <Activity className="h-5 w-5 text-primary" />
+            Daily Reading History
+          </CardTitle>
+          <CardDescription>
+            Blood pressure readings organized by day (3 readings per day: morning, afternoon, evening)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {dailyReadings.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">
+              No readings have been recorded yet
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {dailyReadings.map((day) => (
+                <div key={day.date} className="border border-border rounded-lg overflow-hidden">
+                  {/* Day Header */}
+                  <div className="flex items-center justify-between p-4 bg-secondary/30">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-primary" />
+                      <span className="font-semibold text-foreground">{day.formattedDate}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex gap-1">
+                        {[1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className={`h-2 w-6 rounded-full ${
+                              i <= day.completedCount ? "bg-primary" : "bg-border"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {day.completedCount}/3
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Readings Grid */}
+                  <div className="grid grid-cols-3 divide-x divide-border">
+                    {(["morning", "afternoon", "evening"] as TimeOfDay[]).map((timeSlot) => {
+                      const reading = day.readings[timeSlot]
+                      const Icon = getTimeOfDayIcon(timeSlot)
+
+                      return (
+                        <div key={timeSlot} className="p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Icon className={`h-4 w-4 ${
+                              timeSlot === "morning" ? "text-yellow-400" :
+                              timeSlot === "afternoon" ? "text-orange-400" :
+                              "text-blue-400"
+                            }`} />
+                            <span className="text-sm font-medium text-foreground">
+                              {getTimeOfDayLabel(timeSlot)}
+                            </span>
+                          </div>
+
+                          {reading ? (
+                            <div className="space-y-2">
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-foreground">
+                                  {reading.systolic}/{reading.diastolic}
+                                </p>
+                                <p className="text-xs text-muted-foreground">mmHg</p>
+                              </div>
+                              <div className="flex items-center justify-center gap-2">
+                                <Heart className="h-3 w-3 text-red-400" />
+                                <span className="text-sm text-foreground">{reading.pulse} bpm</span>
+                              </div>
+                              <div className="flex justify-center">
+                                <Badge variant="outline" className={`${getStatusColor(reading.status)} text-xs`}>
+                                  {reading.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-24 text-muted-foreground">
+                              <Minus className="h-6 w-6 mb-1" />
+                              <span className="text-xs">Not recorded</span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Health Alerts */}
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <AlertTriangle className="h-5 w-5 text-primary" />
+            Health Alerts
+          </CardTitle>
+          <CardDescription>Recent abnormal readings requiring attention</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {readings.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">
+              No readings available yet
+            </p>
+          ) : (
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {readings
+                .filter((r) => r.status !== "normal")
+                .slice(0, 10)
+                .map((reading) => {
+                  const TimeIcon = reading.timeOfDay ? getTimeOfDayIcon(reading.timeOfDay) : Activity
+                  return (
                     <div
                       key={reading.id}
                       className="flex items-center justify-between p-3 rounded-lg bg-secondary/50"
                     >
                       <div className="flex items-center gap-3">
-                        <Heart className={`h-4 w-4 ${
+                        <TimeIcon className={`h-4 w-4 ${
                           reading.status === "high" ? "text-red-400" :
                           reading.status === "low" ? "text-blue-400" :
                           "text-yellow-400"
@@ -276,7 +479,7 @@ export function DoctorDashboard() {
                             {reading.systolic}/{reading.diastolic} mmHg
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {format(new Date(reading.timestamp), "MMM d, h:mm a")}
+                            {format(new Date(reading.timestamp), "MMM d")} - {reading.timeOfDay ? getTimeOfDayLabel(reading.timeOfDay) : ""}
                           </p>
                         </div>
                       </div>
@@ -284,69 +487,14 @@ export function DoctorDashboard() {
                         {reading.status}
                       </Badge>
                     </div>
-                  ))}
-                {readings.filter((r) => r.status !== "normal").length === 0 && (
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
-                    <p className="text-muted-foreground">All readings are normal</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* All Readings Table */}
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-foreground">
-            <Activity className="h-5 w-5 text-primary" />
-            Complete Reading History
-          </CardTitle>
-          <CardDescription>All blood pressure readings recorded by the patient</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {readings.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              No readings have been recorded yet
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Date & Time</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Systolic</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Diastolic</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Pulse</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {readings.map((reading) => (
-                    <tr key={reading.id} className="border-b border-border/50 hover:bg-secondary/30">
-                      <td className="py-3 px-4 text-sm text-foreground">
-                        {format(new Date(reading.timestamp), "MMM d, yyyy h:mm a")}
-                      </td>
-                      <td className="py-3 px-4 text-sm font-medium text-foreground">
-                        {reading.systolic} mmHg
-                      </td>
-                      <td className="py-3 px-4 text-sm font-medium text-foreground">
-                        {reading.diastolic} mmHg
-                      </td>
-                      <td className="py-3 px-4 text-sm text-foreground">
-                        {reading.pulse} bpm
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge variant="outline" className={getStatusColor(reading.status)}>
-                          {reading.status}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                  )
+                })}
+              {readings.filter((r) => r.status !== "normal").length === 0 && (
+                <div className="text-center py-8">
+                  <CheckCircle className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
+                  <p className="text-muted-foreground">All readings are normal</p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

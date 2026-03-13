@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { startOfDay, isSameDay } from "date-fns"
 
 export interface Patient {
   id: string
@@ -15,6 +16,8 @@ export interface Patient {
   createdAt: Date
 }
 
+export type TimeOfDay = "morning" | "afternoon" | "evening"
+
 export interface BloodPressureReading {
   id: string
   systolic: number
@@ -22,14 +25,19 @@ export interface BloodPressureReading {
   pulse: number
   timestamp: Date
   status: "normal" | "elevated" | "high" | "low"
+  timeOfDay: TimeOfDay
+  date: string // YYYY-MM-DD format for grouping
 }
 
 interface HealthContextType {
   patient: Patient | null
   readings: BloodPressureReading[]
   isDoctorLoggedIn: boolean
+  currentDate: Date
+  todayReadings: { morning: boolean; afternoon: boolean; evening: boolean }
+  nextAvailableSlot: TimeOfDay | null
   registerPatient: (patient: Omit<Patient, "id" | "createdAt">) => void
-  addReading: (reading: Omit<BloodPressureReading, "id" | "timestamp" | "status">) => void
+  addReading: (reading: Omit<BloodPressureReading, "id" | "timestamp" | "status" | "date">) => void
   deleteReading: (id: string) => void
   loginDoctor: (username: string, password: string) => boolean
   logoutDoctor: () => void
@@ -50,11 +58,16 @@ function calculateBPStatus(systolic: number, diastolic: number): BloodPressureRe
   return "normal"
 }
 
+function getDateString(date: Date): string {
+  return date.toISOString().split("T")[0]
+}
+
 export function HealthProvider({ children }: { children: ReactNode }) {
   const [patient, setPatient] = useState<Patient | null>(null)
   const [readings, setReadings] = useState<BloodPressureReading[]>([])
   const [isDoctorLoggedIn, setIsDoctorLoggedIn] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [currentDate, setCurrentDate] = useState(new Date())
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -93,6 +106,53 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     }
   }, [readings, isLoaded])
 
+  // Check which readings have been taken today
+  const todayReadings = {
+    morning: readings.some(
+      (r) => r.date === getDateString(currentDate) && r.timeOfDay === "morning"
+    ),
+    afternoon: readings.some(
+      (r) => r.date === getDateString(currentDate) && r.timeOfDay === "afternoon"
+    ),
+    evening: readings.some(
+      (r) => r.date === getDateString(currentDate) && r.timeOfDay === "evening"
+    ),
+  }
+
+  // Determine the next available time slot
+  const getNextAvailableSlot = (): TimeOfDay | null => {
+    if (!todayReadings.morning) return "morning"
+    if (!todayReadings.afternoon) return "afternoon"
+    if (!todayReadings.evening) return "evening"
+    return null // All slots filled for today
+  }
+
+  const nextAvailableSlot = getNextAvailableSlot()
+
+  // Auto-advance to next day when all slots are filled
+  useEffect(() => {
+    if (isLoaded && todayReadings.morning && todayReadings.afternoon && todayReadings.evening) {
+      // Check if we need to advance to next day
+      const now = new Date()
+      if (!isSameDay(currentDate, now)) {
+        setCurrentDate(now)
+      }
+    }
+  }, [readings, isLoaded, todayReadings, currentDate])
+
+  // Also update current date at midnight
+  useEffect(() => {
+    const checkDate = () => {
+      const now = new Date()
+      if (!isSameDay(currentDate, now)) {
+        setCurrentDate(now)
+      }
+    }
+
+    const interval = setInterval(checkDate, 60000) // Check every minute
+    return () => clearInterval(interval)
+  }, [currentDate])
+
   const registerPatient = (patientData: Omit<Patient, "id" | "createdAt">) => {
     const newPatient: Patient = {
       ...patientData,
@@ -102,14 +162,30 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     setPatient(newPatient)
   }
 
-  const addReading = (readingData: Omit<BloodPressureReading, "id" | "timestamp" | "status">) => {
+  const addReading = (readingData: Omit<BloodPressureReading, "id" | "timestamp" | "status" | "date">) => {
+    const now = new Date()
     const newReading: BloodPressureReading = {
       ...readingData,
       id: crypto.randomUUID(),
-      timestamp: new Date(),
+      timestamp: now,
+      date: getDateString(currentDate),
       status: calculateBPStatus(readingData.systolic, readingData.diastolic),
     }
     setReadings((prev) => [newReading, ...prev])
+
+    // Check if all readings for the day are complete - if so, advance to next day
+    const updatedTodayReadings = {
+      morning: newReading.timeOfDay === "morning" || todayReadings.morning,
+      afternoon: newReading.timeOfDay === "afternoon" || todayReadings.afternoon,
+      evening: newReading.timeOfDay === "evening" || todayReadings.evening,
+    }
+
+    if (updatedTodayReadings.morning && updatedTodayReadings.afternoon && updatedTodayReadings.evening) {
+      // All slots filled, advance to next day
+      const nextDay = new Date(currentDate)
+      nextDay.setDate(nextDay.getDate() + 1)
+      setCurrentDate(nextDay)
+    }
   }
 
   const deleteReading = (id: string) => {
@@ -145,6 +221,9 @@ export function HealthProvider({ children }: { children: ReactNode }) {
         patient,
         readings,
         isDoctorLoggedIn,
+        currentDate,
+        todayReadings,
+        nextAvailableSlot,
         registerPatient,
         addReading,
         deleteReading,

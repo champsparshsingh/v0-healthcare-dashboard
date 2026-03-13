@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useHealth } from "@/lib/health-context"
+import { useState, useEffect } from "react"
+import { useHealth, TimeOfDay } from "@/lib/health-context"
 import {
   Dialog,
   DialogContent,
@@ -13,17 +13,34 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, Heart, Activity } from "lucide-react"
+import { Plus, Heart, Activity, Sun, Sunset, Moon, CheckCircle } from "lucide-react"
+import { format } from "date-fns"
+
+const TIME_SLOTS: { value: TimeOfDay; label: string; icon: typeof Sun; description: string }[] = [
+  { value: "morning", label: "Morning", icon: Sun, description: "6:00 AM - 12:00 PM" },
+  { value: "afternoon", label: "Afternoon", icon: Sunset, description: "12:00 PM - 6:00 PM" },
+  { value: "evening", label: "Evening", icon: Moon, description: "6:00 PM - 12:00 AM" },
+]
 
 export function BPEntryDialog() {
-  const { addReading } = useHealth()
+  const { addReading, todayReadings, nextAvailableSlot, currentDate } = useHealth()
   const [open, setOpen] = useState(false)
+  const [selectedTime, setSelectedTime] = useState<TimeOfDay | null>(null)
   const [formData, setFormData] = useState({
     systolic: "",
     diastolic: "",
     pulse: "",
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Set default time slot when dialog opens
+  useEffect(() => {
+    if (open && nextAvailableSlot) {
+      setSelectedTime(nextAvailableSlot)
+    }
+  }, [open, nextAvailableSlot])
+
+  const allSlotsCompleted = !nextAvailableSlot
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -40,19 +57,24 @@ export function BPEntryDialog() {
     if (!formData.pulse || pulse < 40 || pulse > 180) {
       newErrors.pulse = "Pulse must be between 40-180 bpm"
     }
+    if (!selectedTime) {
+      newErrors.time = "Please select a time of day"
+    }
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = () => {
-    if (validateForm()) {
+    if (validateForm() && selectedTime) {
       addReading({
         systolic: parseInt(formData.systolic),
         diastolic: parseInt(formData.diastolic),
         pulse: parseInt(formData.pulse),
+        timeOfDay: selectedTime,
       })
       setFormData({ systolic: "", diastolic: "", pulse: "" })
+      setSelectedTime(null)
       setOpen(false)
     }
   }
@@ -87,12 +109,18 @@ export function BPEntryDialog() {
 
   const status = getPreviewStatus()
 
+  const isSlotTaken = (slot: TimeOfDay) => {
+    return todayReadings[slot]
+  }
+
+  const completedCount = Object.values(todayReadings).filter(Boolean).length
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2">
+        <Button className="gap-2" disabled={allSlotsCompleted}>
           <Plus className="h-4 w-4" />
-          Add Reading
+          {allSlotsCompleted ? "All Readings Complete" : "Add Reading"}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -102,11 +130,69 @@ export function BPEntryDialog() {
             New Blood Pressure Reading
           </DialogTitle>
           <DialogDescription>
-            Enter your current blood pressure and pulse measurements
+            Recording for {format(currentDate, "EEEE, MMMM d, yyyy")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Daily Progress */}
+          <div className="bg-secondary/50 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-foreground">Today&apos;s Progress</span>
+              <span className="text-sm text-muted-foreground">{completedCount}/3 readings</span>
+            </div>
+            <div className="flex gap-2">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className={`h-2 flex-1 rounded-full ${
+                    i <= completedCount ? "bg-primary" : "bg-border"
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Time Slot Selection */}
+          <div className="space-y-2">
+            <Label className="text-foreground">Select Time of Day</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {TIME_SLOTS.map((slot) => {
+                const Icon = slot.icon
+                const taken = isSlotTaken(slot.value)
+                const isSelected = selectedTime === slot.value
+
+                return (
+                  <button
+                    key={slot.value}
+                    type="button"
+                    onClick={() => !taken && setSelectedTime(slot.value)}
+                    disabled={taken}
+                    className={`relative flex flex-col items-center gap-1 p-3 rounded-lg border transition-all ${
+                      taken
+                        ? "bg-primary/10 border-primary/30 cursor-not-allowed"
+                        : isSelected
+                        ? "bg-primary/20 border-primary"
+                        : "bg-secondary/50 border-border hover:border-primary/50"
+                    }`}
+                  >
+                    {taken && (
+                      <CheckCircle className="absolute top-1 right-1 h-4 w-4 text-primary" />
+                    )}
+                    <Icon className={`h-5 w-5 ${taken ? "text-primary" : isSelected ? "text-primary" : "text-muted-foreground"}`} />
+                    <span className={`text-xs font-medium ${taken ? "text-primary" : isSelected ? "text-primary" : "text-foreground"}`}>
+                      {slot.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{slot.description}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {errors.time && (
+              <p className="text-xs text-destructive">{errors.time}</p>
+            )}
+          </div>
+
           {/* Blood Pressure Inputs */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -187,7 +273,7 @@ export function BPEntryDialog() {
           <Button variant="outline" onClick={() => setOpen(false)} className="flex-1">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} className="flex-1">
+          <Button onClick={handleSubmit} className="flex-1" disabled={!selectedTime}>
             Save Reading
           </Button>
         </div>

@@ -11,11 +11,12 @@ import { BPEntryDialog } from "@/components/bp-entry-dialog"
 import { DoctorLogin } from "@/components/doctor-login"
 import { DoctorDashboard } from "@/components/doctor-dashboard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Activity, User, Stethoscope } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Activity, User, Stethoscope, Sun, Sunset, Moon, Calendar, CheckCircle } from "lucide-react"
 import { format, subDays, isSameDay } from "date-fns"
 
 export default function Home() {
-  const { patient, readings, isDoctorLoggedIn } = useHealth()
+  const { patient, readings, isDoctorLoggedIn, currentDate, todayReadings, nextAvailableSlot } = useHealth()
 
   // Transform readings for the blood pressure card
   const latestReading = readings[0]
@@ -83,6 +84,9 @@ export default function Home() {
     status: r.status,
   }))
 
+  const completedCount = Object.values(todayReadings).filter(Boolean).length
+  const allComplete = completedCount === 3
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -126,6 +130,110 @@ export default function Home() {
                   </div>
                   <BPEntryDialog />
                 </div>
+
+                {/* Today's Schedule Card */}
+                <Card className="border-border">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 text-foreground">
+                        <Calendar className="h-5 w-5 text-primary" />
+                        Today&apos;s Readings
+                      </CardTitle>
+                      <span className="text-sm text-muted-foreground">
+                        {format(currentDate, "EEEE, MMMM d, yyyy")}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4">
+                      {/* Morning */}
+                      <div className={`relative flex flex-col items-center p-4 rounded-lg border transition-all ${
+                        todayReadings.morning 
+                          ? "bg-primary/10 border-primary/30" 
+                          : nextAvailableSlot === "morning"
+                          ? "bg-secondary border-primary/50"
+                          : "bg-secondary/50 border-border"
+                      }`}>
+                        {todayReadings.morning && (
+                          <CheckCircle className="absolute top-2 right-2 h-4 w-4 text-primary" />
+                        )}
+                        <Sun className={`h-8 w-8 mb-2 ${todayReadings.morning ? "text-primary" : "text-yellow-400"}`} />
+                        <span className="font-semibold text-foreground">Morning</span>
+                        <span className="text-xs text-muted-foreground">6AM - 12PM</span>
+                        <span className={`mt-2 text-xs font-medium ${
+                          todayReadings.morning ? "text-primary" : "text-muted-foreground"
+                        }`}>
+                          {todayReadings.morning ? "Completed" : nextAvailableSlot === "morning" ? "Next" : "Pending"}
+                        </span>
+                      </div>
+
+                      {/* Afternoon */}
+                      <div className={`relative flex flex-col items-center p-4 rounded-lg border transition-all ${
+                        todayReadings.afternoon 
+                          ? "bg-primary/10 border-primary/30" 
+                          : nextAvailableSlot === "afternoon"
+                          ? "bg-secondary border-primary/50"
+                          : "bg-secondary/50 border-border"
+                      }`}>
+                        {todayReadings.afternoon && (
+                          <CheckCircle className="absolute top-2 right-2 h-4 w-4 text-primary" />
+                        )}
+                        <Sunset className={`h-8 w-8 mb-2 ${todayReadings.afternoon ? "text-primary" : "text-orange-400"}`} />
+                        <span className="font-semibold text-foreground">Afternoon</span>
+                        <span className="text-xs text-muted-foreground">12PM - 6PM</span>
+                        <span className={`mt-2 text-xs font-medium ${
+                          todayReadings.afternoon ? "text-primary" : "text-muted-foreground"
+                        }`}>
+                          {todayReadings.afternoon ? "Completed" : nextAvailableSlot === "afternoon" ? "Next" : "Pending"}
+                        </span>
+                      </div>
+
+                      {/* Evening */}
+                      <div className={`relative flex flex-col items-center p-4 rounded-lg border transition-all ${
+                        todayReadings.evening 
+                          ? "bg-primary/10 border-primary/30" 
+                          : nextAvailableSlot === "evening"
+                          ? "bg-secondary border-primary/50"
+                          : "bg-secondary/50 border-border"
+                      }`}>
+                        {todayReadings.evening && (
+                          <CheckCircle className="absolute top-2 right-2 h-4 w-4 text-primary" />
+                        )}
+                        <Moon className={`h-8 w-8 mb-2 ${todayReadings.evening ? "text-primary" : "text-blue-400"}`} />
+                        <span className="font-semibold text-foreground">Evening</span>
+                        <span className="text-xs text-muted-foreground">6PM - 12AM</span>
+                        <span className={`mt-2 text-xs font-medium ${
+                          todayReadings.evening ? "text-primary" : "text-muted-foreground"
+                        }`}>
+                          {todayReadings.evening ? "Completed" : nextAvailableSlot === "evening" ? "Next" : "Pending"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-foreground">Daily Progress</span>
+                        <span className="text-sm text-muted-foreground">{completedCount}/3 readings</span>
+                      </div>
+                      <div className="flex gap-2">
+                        {[1, 2, 3].map((i) => (
+                          <div
+                            key={i}
+                            className={`h-2 flex-1 rounded-full transition-all ${
+                              i <= completedCount ? "bg-primary" : "bg-border"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      {allComplete && (
+                        <p className="mt-3 text-center text-sm text-primary font-medium">
+                          All readings complete for today! Next readings start tomorrow.
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
 
                 {/* Dashboard Grid */}
                 <div className="grid gap-6 lg:grid-cols-3">
