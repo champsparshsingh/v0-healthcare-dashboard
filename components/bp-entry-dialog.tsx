@@ -13,8 +13,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Plus, Heart, Activity, Sun, Sunset, Moon, CheckCircle } from "lucide-react"
-import { format } from "date-fns"
+import { Plus, Heart, Activity, Sun, Sunset, Moon, CheckCircle, Calendar, ChevronLeft, ChevronRight } from "lucide-react"
+import { format, subDays, addDays, isAfter, startOfDay } from "date-fns"
 
 const TIME_SLOTS: { value: TimeOfDay; label: string; icon: typeof Sun; description: string }[] = [
   { value: "morning", label: "Morning", icon: Sun, description: "6:00 AM - 12:00 PM" },
@@ -22,9 +22,14 @@ const TIME_SLOTS: { value: TimeOfDay; label: string; icon: typeof Sun; descripti
   { value: "evening", label: "Evening", icon: Moon, description: "6:00 PM - 12:00 AM" },
 ]
 
+function getDateString(date: Date): string {
+  return date.toISOString().split("T")[0]
+}
+
 export function BPEntryDialog() {
-  const { addReading, todayReadings, nextAvailableSlot, currentDate } = useHealth()
+  const { addReading, getReadingsForDate, getNextAvailableSlotForDate, currentDate } = useHealth()
   const [open, setOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedTime, setSelectedTime] = useState<TimeOfDay | null>(null)
   const [formData, setFormData] = useState({
     systolic: "",
@@ -33,14 +38,37 @@ export function BPEntryDialog() {
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Set default time slot when dialog opens
-  useEffect(() => {
-    if (open && nextAvailableSlot) {
-      setSelectedTime(nextAvailableSlot)
-    }
-  }, [open, nextAvailableSlot])
+  const selectedDateStr = getDateString(selectedDate)
+  const dateReadings = getReadingsForDate(selectedDateStr)
+  const nextSlotForDate = getNextAvailableSlotForDate(selectedDateStr)
+  const allSlotsForDateComplete = !nextSlotForDate
+  const today = startOfDay(new Date())
 
-  const allSlotsCompleted = !nextAvailableSlot
+  // Set default time slot when dialog opens or date changes
+  useEffect(() => {
+    if (open && nextSlotForDate) {
+      setSelectedTime(nextSlotForDate)
+    } else if (open && !nextSlotForDate) {
+      setSelectedTime(null)
+    }
+  }, [open, nextSlotForDate, selectedDateStr])
+
+  // Reset selected date when dialog opens
+  useEffect(() => {
+    if (open) {
+      setSelectedDate(new Date())
+    }
+  }, [open])
+
+  const canGoForward = !isAfter(startOfDay(addDays(selectedDate, 1)), today)
+
+  const navigateDate = (direction: "prev" | "next") => {
+    if (direction === "prev") {
+      setSelectedDate(subDays(selectedDate, 1))
+    } else if (direction === "next" && canGoForward) {
+      setSelectedDate(addDays(selectedDate, 1))
+    }
+  }
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -72,10 +100,22 @@ export function BPEntryDialog() {
         diastolic: parseInt(formData.diastolic),
         pulse: parseInt(formData.pulse),
         timeOfDay: selectedTime,
+        date: selectedDateStr,
       })
       setFormData({ systolic: "", diastolic: "", pulse: "" })
       setSelectedTime(null)
-      setOpen(false)
+      
+      // Check if there are more slots for this date
+      const updatedReadings = {
+        morning: selectedTime === "morning" || dateReadings.morning,
+        afternoon: selectedTime === "afternoon" || dateReadings.afternoon,
+        evening: selectedTime === "evening" || dateReadings.evening,
+      }
+      
+      if (updatedReadings.morning && updatedReadings.afternoon && updatedReadings.evening) {
+        // All done for this date, close dialog
+        setOpen(false)
+      }
     }
   }
 
@@ -110,17 +150,18 @@ export function BPEntryDialog() {
   const status = getPreviewStatus()
 
   const isSlotTaken = (slot: TimeOfDay) => {
-    return todayReadings[slot]
+    return dateReadings[slot]
   }
 
-  const completedCount = Object.values(todayReadings).filter(Boolean).length
+  const completedCount = Object.values(dateReadings).filter(Boolean).length
+  const isToday = getDateString(selectedDate) === getDateString(new Date())
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="gap-2" disabled={allSlotsCompleted}>
+        <Button className="gap-2">
           <Plus className="h-4 w-4" />
-          {allSlotsCompleted ? "All Readings Complete" : "Add Reading"}
+          Add Reading
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
@@ -130,15 +171,52 @@ export function BPEntryDialog() {
             New Blood Pressure Reading
           </DialogTitle>
           <DialogDescription>
-            Recording for {format(currentDate, "EEEE, MMMM d, yyyy")}
+            Record your blood pressure measurement
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Date Selector */}
+          <div className="space-y-2">
+            <Label className="text-foreground flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              Select Date
+            </Label>
+            <div className="flex items-center justify-between bg-secondary/50 rounded-lg p-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigateDate("prev")}
+                className="h-8 w-8"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="text-center">
+                <div className="font-medium text-foreground">
+                  {format(selectedDate, "EEEE, MMMM d")}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {isToday ? "Today" : format(selectedDate, "yyyy")}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigateDate("next")}
+                disabled={!canGoForward}
+                className="h-8 w-8"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
           {/* Daily Progress */}
           <div className="bg-secondary/50 rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-foreground">Today&apos;s Progress</span>
+              <span className="text-sm font-medium text-foreground">
+                {isToday ? "Today's" : format(selectedDate, "MMM d")} Progress
+              </span>
               <span className="text-sm text-muted-foreground">{completedCount}/3 readings</span>
             </div>
             <div className="flex gap-2">
@@ -151,6 +229,11 @@ export function BPEntryDialog() {
                 />
               ))}
             </div>
+            {allSlotsForDateComplete && (
+              <p className="text-xs text-primary mt-2 text-center">
+                All readings complete for this date. Select a different date.
+              </p>
+            )}
           </div>
 
           {/* Time Slot Selection */}
@@ -273,7 +356,7 @@ export function BPEntryDialog() {
           <Button variant="outline" onClick={() => setOpen(false)} className="flex-1">
             Cancel
           </Button>
-          <Button onClick={handleSubmit} className="flex-1" disabled={!selectedTime}>
+          <Button onClick={handleSubmit} className="flex-1" disabled={!selectedTime || allSlotsForDateComplete}>
             Save Reading
           </Button>
         </div>

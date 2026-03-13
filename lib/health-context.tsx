@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
-import { startOfDay, isSameDay } from "date-fns"
+import { isSameDay } from "date-fns"
 
 export interface Patient {
   id: string
@@ -37,11 +37,13 @@ interface HealthContextType {
   todayReadings: { morning: boolean; afternoon: boolean; evening: boolean }
   nextAvailableSlot: TimeOfDay | null
   registerPatient: (patient: Omit<Patient, "id" | "createdAt">) => void
-  addReading: (reading: Omit<BloodPressureReading, "id" | "timestamp" | "status" | "date">) => void
+  addReading: (reading: Omit<BloodPressureReading, "id" | "timestamp" | "status">) => void
   deleteReading: (id: string) => void
   loginDoctor: (username: string, password: string) => boolean
   logoutDoctor: () => void
   clearPatientData: () => void
+  getReadingsForDate: (dateStr: string) => { morning: boolean; afternoon: boolean; evening: boolean }
+  getNextAvailableSlotForDate: (dateStr: string) => TimeOfDay | null
 }
 
 const HealthContext = createContext<HealthContextType | undefined>(undefined)
@@ -106,28 +108,29 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     }
   }, [readings, isLoaded])
 
+  // Get readings status for a specific date
+  const getReadingsForDate = (dateStr: string) => {
+    return {
+      morning: readings.some((r) => r.date === dateStr && r.timeOfDay === "morning"),
+      afternoon: readings.some((r) => r.date === dateStr && r.timeOfDay === "afternoon"),
+      evening: readings.some((r) => r.date === dateStr && r.timeOfDay === "evening"),
+    }
+  }
+
+  // Get next available slot for a specific date
+  const getNextAvailableSlotForDate = (dateStr: string): TimeOfDay | null => {
+    const dateReadings = getReadingsForDate(dateStr)
+    if (!dateReadings.morning) return "morning"
+    if (!dateReadings.afternoon) return "afternoon"
+    if (!dateReadings.evening) return "evening"
+    return null
+  }
+
   // Check which readings have been taken today
-  const todayReadings = {
-    morning: readings.some(
-      (r) => r.date === getDateString(currentDate) && r.timeOfDay === "morning"
-    ),
-    afternoon: readings.some(
-      (r) => r.date === getDateString(currentDate) && r.timeOfDay === "afternoon"
-    ),
-    evening: readings.some(
-      (r) => r.date === getDateString(currentDate) && r.timeOfDay === "evening"
-    ),
-  }
+  const todayReadings = getReadingsForDate(getDateString(currentDate))
 
-  // Determine the next available time slot
-  const getNextAvailableSlot = (): TimeOfDay | null => {
-    if (!todayReadings.morning) return "morning"
-    if (!todayReadings.afternoon) return "afternoon"
-    if (!todayReadings.evening) return "evening"
-    return null // All slots filled for today
-  }
-
-  const nextAvailableSlot = getNextAvailableSlot()
+  // Determine the next available time slot for today
+  const nextAvailableSlot = getNextAvailableSlotForDate(getDateString(currentDate))
 
   // Auto-advance to next day when all slots are filled
   useEffect(() => {
@@ -162,29 +165,33 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     setPatient(newPatient)
   }
 
-  const addReading = (readingData: Omit<BloodPressureReading, "id" | "timestamp" | "status" | "date">) => {
+  const addReading = (readingData: Omit<BloodPressureReading, "id" | "timestamp" | "status">) => {
     const now = new Date()
     const newReading: BloodPressureReading = {
       ...readingData,
       id: crypto.randomUUID(),
       timestamp: now,
-      date: getDateString(currentDate),
       status: calculateBPStatus(readingData.systolic, readingData.diastolic),
     }
-    setReadings((prev) => [newReading, ...prev])
+    setReadings((prev) => [...prev, newReading].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    ))
 
-    // Check if all readings for the day are complete - if so, advance to next day
-    const updatedTodayReadings = {
-      morning: newReading.timeOfDay === "morning" || todayReadings.morning,
-      afternoon: newReading.timeOfDay === "afternoon" || todayReadings.afternoon,
-      evening: newReading.timeOfDay === "evening" || todayReadings.evening,
-    }
+    // Check if all readings for today are complete - if so, advance to next day
+    const todayStr = getDateString(currentDate)
+    if (readingData.date === todayStr) {
+      const updatedTodayReadings = {
+        morning: newReading.timeOfDay === "morning" || todayReadings.morning,
+        afternoon: newReading.timeOfDay === "afternoon" || todayReadings.afternoon,
+        evening: newReading.timeOfDay === "evening" || todayReadings.evening,
+      }
 
-    if (updatedTodayReadings.morning && updatedTodayReadings.afternoon && updatedTodayReadings.evening) {
-      // All slots filled, advance to next day
-      const nextDay = new Date(currentDate)
-      nextDay.setDate(nextDay.getDate() + 1)
-      setCurrentDate(nextDay)
+      if (updatedTodayReadings.morning && updatedTodayReadings.afternoon && updatedTodayReadings.evening) {
+        // All slots filled, advance to next day
+        const nextDay = new Date(currentDate)
+        nextDay.setDate(nextDay.getDate() + 1)
+        setCurrentDate(nextDay)
+      }
     }
   }
 
@@ -230,6 +237,8 @@ export function HealthProvider({ children }: { children: ReactNode }) {
         loginDoctor,
         logoutDoctor,
         clearPatientData,
+        getReadingsForDate,
+        getNextAvailableSlotForDate,
       }}
     >
       {children}
