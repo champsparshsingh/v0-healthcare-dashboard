@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo } from "react"
 import { useHealth } from "@/lib/health-context"
 import { PatientRegistrationForm } from "@/components/patient-registration-form"
 import { PatientProfile } from "@/components/patient-profile"
@@ -13,7 +12,7 @@ import { DoctorDashboard } from "@/components/doctor-dashboard"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Activity, User, Stethoscope, Sun, Sunset, Moon, Calendar, CheckCircle } from "lucide-react"
-import { format, subDays, isSameDay } from "date-fns"
+import { format } from "date-fns"
 
 export default function Home() {
   const { patient, readings, isDoctorLoggedIn, currentDate, todayReadings, nextAvailableSlot } = useHealth()
@@ -41,38 +40,6 @@ export default function Home() {
         status: previousReading.status,
       }
     : undefined
-
-  // Transform readings for the weekly graph
-  const weeklyData = useMemo(() => {
-    const days = []
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i)
-      const dayReadings = readings.filter((r) =>
-        isSameDay(new Date(r.timestamp), date)
-      )
-
-      if (dayReadings.length > 0) {
-        const avgSystolic = Math.round(
-          dayReadings.reduce((sum, r) => sum + r.systolic, 0) / dayReadings.length
-        )
-        const avgDiastolic = Math.round(
-          dayReadings.reduce((sum, r) => sum + r.diastolic, 0) / dayReadings.length
-        )
-        days.push({
-          day: format(date, "EEE"),
-          systolic: avgSystolic,
-          diastolic: avgDiastolic,
-        })
-      } else {
-        days.push({
-          day: format(date, "EEE"),
-          systolic: 0,
-          diastolic: 0,
-        })
-      }
-    }
-    return days
-  }, [readings])
 
   // Transform readings for history component
   const historyReadings = readings.slice(0, 10).map((r) => ({
@@ -264,9 +231,7 @@ export default function Home() {
                     )}
 
                     {/* Weekly Graph */}
-                    {readings.length > 0 && (
-                      <WeeklyGraph data={weeklyData} />
-                    )}
+                    <WeeklyGraph />
 
                     {/* Reading History */}
                     {historyReadings.length > 0 && (
