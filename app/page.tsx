@@ -1,168 +1,184 @@
 "use client"
 
+import { useMemo } from "react"
+import { useHealth } from "@/lib/health-context"
+import { PatientRegistrationForm } from "@/components/patient-registration-form"
+import { PatientProfile } from "@/components/patient-profile"
 import { BloodPressureCard } from "@/components/blood-pressure-card"
 import { WeeklyGraph } from "@/components/weekly-graph"
-import { PatientProfile } from "@/components/patient-profile"
-import { DoctorMonitoringPanel } from "@/components/doctor-monitoring-panel"
-import { VitalStats, defaultVitalStats } from "@/components/vital-stats"
 import { ReadingsHistory } from "@/components/readings-history"
-import { Activity, Bell, Search, Settings } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { BPEntryDialog } from "@/components/bp-entry-dialog"
+import { DoctorLogin } from "@/components/doctor-login"
+import { DoctorDashboard } from "@/components/doctor-dashboard"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Activity, User, Stethoscope } from "lucide-react"
+import { format, subDays, isSameDay } from "date-fns"
 
-// Sample data
-const currentReading = {
-  systolic: 128,
-  diastolic: 82,
-  pulse: 72,
-  timestamp: "Today, 2:45 PM",
-  status: "normal" as const,
-}
+export default function Home() {
+  const { patient, readings, isDoctorLoggedIn } = useHealth()
 
-const previousReading = {
-  systolic: 132,
-  diastolic: 84,
-  pulse: 75,
-  timestamp: "Today, 8:30 AM",
-  status: "elevated" as const,
-}
+  // Transform readings for the blood pressure card
+  const latestReading = readings[0]
+  const previousReading = readings[1]
 
-const weeklyData = [
-  { day: "Mon", systolic: 125, diastolic: 80 },
-  { day: "Tue", systolic: 130, diastolic: 85 },
-  { day: "Wed", systolic: 128, diastolic: 82 },
-  { day: "Thu", systolic: 135, diastolic: 88 },
-  { day: "Fri", systolic: 127, diastolic: 81 },
-  { day: "Sat", systolic: 122, diastolic: 78 },
-  { day: "Sun", systolic: 128, diastolic: 82 },
-]
+  const formattedLatestReading = latestReading
+    ? {
+        systolic: latestReading.systolic,
+        diastolic: latestReading.diastolic,
+        pulse: latestReading.pulse,
+        timestamp: format(new Date(latestReading.timestamp), "MMM d, h:mm a"),
+        status: latestReading.status,
+      }
+    : null
 
-const patientInfo = {
-  name: "Sarah Johnson",
-  age: 45,
-  gender: "Female",
-  bloodType: "A+",
-  height: "5'6\"",
-  weight: "145 lbs",
-  phone: "+1 (555) 123-4567",
-  email: "sarah.johnson@email.com",
-  address: "123 Healthcare Ave, Medical City",
-  lastVisit: "March 1, 2026",
-  conditions: ["Hypertension", "Pre-diabetes", "Anxiety"],
-}
+  const formattedPreviousReading = previousReading
+    ? {
+        systolic: previousReading.systolic,
+        diastolic: previousReading.diastolic,
+        pulse: previousReading.pulse,
+        timestamp: format(new Date(previousReading.timestamp), "MMM d, h:mm a"),
+        status: previousReading.status,
+      }
+    : undefined
 
-const doctorInfo = {
-  name: "Dr. Michael Chen",
-  specialty: "Cardiologist",
-  status: "available" as const,
-}
+  // Transform readings for the weekly graph
+  const weeklyData = useMemo(() => {
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const date = subDays(new Date(), i)
+      const dayReadings = readings.filter((r) =>
+        isSameDay(new Date(r.timestamp), date)
+      )
 
-const appointments = [
-  { id: "1", date: "Mar 15", time: "10:00 AM", type: "Follow-up Check", status: "upcoming" as const },
-  { id: "2", date: "Mar 22", time: "2:30 PM", type: "Lab Results Review", status: "upcoming" as const },
-  { id: "3", date: "Feb 28", time: "11:00 AM", type: "Annual Physical", status: "completed" as const },
-]
+      if (dayReadings.length > 0) {
+        const avgSystolic = Math.round(
+          dayReadings.reduce((sum, r) => sum + r.systolic, 0) / dayReadings.length
+        )
+        const avgDiastolic = Math.round(
+          dayReadings.reduce((sum, r) => sum + r.diastolic, 0) / dayReadings.length
+        )
+        days.push({
+          day: format(date, "EEE"),
+          systolic: avgSystolic,
+          diastolic: avgDiastolic,
+        })
+      } else {
+        days.push({
+          day: format(date, "EEE"),
+          systolic: 0,
+          diastolic: 0,
+        })
+      }
+    }
+    return days
+  }, [readings])
 
-const alerts = [
-  { id: "1", message: "Blood pressure elevated in morning readings", severity: "warning" as const, timestamp: "2 hours ago" },
-  { id: "2", message: "Medication reminder: Lisinopril 10mg", severity: "info" as const, timestamp: "5 hours ago" },
-]
+  // Transform readings for history component
+  const historyReadings = readings.slice(0, 10).map((r) => ({
+    id: r.id,
+    systolic: r.systolic,
+    diastolic: r.diastolic,
+    pulse: r.pulse,
+    timestamp: format(new Date(r.timestamp), "MMM d, h:mm a"),
+    status: r.status,
+  }))
 
-const recentReadings = [
-  { id: "1", systolic: 128, diastolic: 82, pulse: 72, timestamp: "Today, 2:45 PM", status: "normal" as const },
-  { id: "2", systolic: 132, diastolic: 84, pulse: 75, timestamp: "Today, 8:30 AM", status: "elevated" as const },
-  { id: "3", systolic: 125, diastolic: 80, pulse: 70, timestamp: "Yesterday, 9:15 PM", status: "normal" as const },
-  { id: "4", systolic: 138, diastolic: 88, pulse: 78, timestamp: "Yesterday, 2:00 PM", status: "high" as const },
-  { id: "5", systolic: 124, diastolic: 79, pulse: 68, timestamp: "Yesterday, 7:45 AM", status: "normal" as const },
-  { id: "6", systolic: 130, diastolic: 85, pulse: 74, timestamp: "2 days ago, 8:00 PM", status: "elevated" as const },
-]
-
-export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex h-16 items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary">
-              <Activity className="size-5 text-primary-foreground" />
-            </div>
-            <span className="text-lg font-semibold text-foreground">HealthPulse</span>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-              <Search className="size-5" />
-              <span className="sr-only">Search</span>
-            </Button>
-            <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
-              <Bell className="size-5" />
-              <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground">
-                2
-              </span>
-              <span className="sr-only">Notifications</span>
-            </Button>
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-              <Settings className="size-5" />
-              <span className="sr-only">Settings</span>
-            </Button>
-            <div className="ml-2 flex items-center gap-3 border-l border-border pl-4">
-              <Avatar className="size-8">
-                <AvatarImage src="" alt="User" />
-                <AvatarFallback className="bg-primary/10 text-primary text-sm">SJ</AvatarFallback>
-              </Avatar>
-              <div className="hidden md:block">
-                <p className="text-sm font-medium text-foreground">Sarah Johnson</p>
-                <p className="text-xs text-muted-foreground">Patient</p>
-              </div>
-            </div>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          <div className="flex items-center gap-2">
+            <Activity className="h-6 w-6 text-primary" />
+            <span className="text-xl font-bold text-foreground">HealthPulse</span>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="p-6">
-        <div className="mx-auto max-w-7xl space-y-6">
-          {/* Page Title */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Health Dashboard</h1>
-              <p className="text-sm text-muted-foreground">Monitor your vital signs and health metrics</p>
-            </div>
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Activity className="mr-2 size-4" />
-              New Reading
-            </Button>
-          </div>
+      <main className="container mx-auto px-4 py-8">
+        <Tabs defaultValue="patient" className="space-y-6">
+          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
+            <TabsTrigger value="patient" className="gap-2">
+              <User className="h-4 w-4" />
+              Patient
+            </TabsTrigger>
+            <TabsTrigger value="doctor" className="gap-2">
+              <Stethoscope className="h-4 w-4" />
+              Doctor
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Vital Stats */}
-          <VitalStats stats={defaultVitalStats} />
+          {/* Patient View */}
+          <TabsContent value="patient">
+            {!patient ? (
+              <PatientRegistrationForm />
+            ) : (
+              <div className="space-y-6">
+                {/* Patient Dashboard Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold text-foreground">
+                      Welcome, {patient.name.split(" ")[0]}
+                    </h1>
+                    <p className="text-muted-foreground">
+                      Track and manage your blood pressure readings
+                    </p>
+                  </div>
+                  <BPEntryDialog />
+                </div>
 
-          {/* Main Grid */}
-          <div className="grid gap-6 lg:grid-cols-3">
-            {/* Left Column - Charts and Readings */}
-            <div className="space-y-6 lg:col-span-2">
-              {/* Blood Pressure and Weekly Graph */}
-              <div className="grid gap-6 md:grid-cols-2">
-                <BloodPressureCard reading={currentReading} previousReading={previousReading} />
-                <ReadingsHistory readings={recentReadings} />
+                {/* Dashboard Grid */}
+                <div className="grid gap-6 lg:grid-cols-3">
+                  {/* Left Column - Profile */}
+                  <div className="space-y-6">
+                    <PatientProfile />
+                  </div>
+
+                  {/* Right Column - Readings */}
+                  <div className="lg:col-span-2 space-y-6">
+                    {/* Current Reading */}
+                    {formattedLatestReading ? (
+                      <BloodPressureCard
+                        reading={formattedLatestReading}
+                        previousReading={formattedPreviousReading}
+                      />
+                    ) : (
+                      <div className="rounded-lg border border-border bg-card p-8 text-center">
+                        <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-foreground mb-2">
+                          No Readings Yet
+                        </h3>
+                        <p className="text-muted-foreground mb-4">
+                          Add your first blood pressure reading to start tracking
+                        </p>
+                        <BPEntryDialog />
+                      </div>
+                    )}
+
+                    {/* Weekly Graph */}
+                    {readings.length > 0 && (
+                      <WeeklyGraph data={weeklyData} />
+                    )}
+
+                    {/* Reading History */}
+                    {historyReadings.length > 0 && (
+                      <ReadingsHistory readings={historyReadings} />
+                    )}
+                  </div>
+                </div>
               </div>
-              
-              {/* Weekly Graph */}
-              <WeeklyGraph data={weeklyData} />
-            </div>
+            )}
+          </TabsContent>
 
-            {/* Right Column - Profile and Doctor Panel */}
-            <div className="space-y-6">
-              <PatientProfile patient={patientInfo} />
-              <DoctorMonitoringPanel 
-                doctor={doctorInfo} 
-                appointments={appointments} 
-                alerts={alerts} 
-              />
-            </div>
-          </div>
-        </div>
+          {/* Doctor View */}
+          <TabsContent value="doctor">
+            {!isDoctorLoggedIn ? (
+              <DoctorLogin />
+            ) : (
+              <DoctorDashboard />
+            )}
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )
