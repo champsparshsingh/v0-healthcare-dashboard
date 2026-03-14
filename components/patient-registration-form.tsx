@@ -77,8 +77,9 @@ export function PatientRegistrationForm() {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors((prev) => {
-        const { [field]: _, ...rest } = prev
-        return rest
+        const nextErrors = { ...prev }
+        delete nextErrors[field]
+        return nextErrors
       })
     }
   }

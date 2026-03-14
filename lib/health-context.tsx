@@ -65,48 +65,60 @@ function getDateString(date: Date): string {
 }
 
 export function HealthProvider({ children }: { children: ReactNode }) {
-  const [patient, setPatient] = useState<Patient | null>(null)
-  const [readings, setReadings] = useState<BloodPressureReading[]>([])
-  const [isDoctorLoggedIn, setIsDoctorLoggedIn] = useState(false)
-  const [isLoaded, setIsLoaded] = useState(false)
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [patient, setPatient] = useState<Patient | null>(() => {
+    if (typeof window === "undefined") {
+      return null
+    }
 
-  // Load data from localStorage on mount
-  useEffect(() => {
     const storedPatient = localStorage.getItem("healthpulse_patient")
+    if (!storedPatient) {
+      return null
+    }
+
+    try {
+      const parsed = JSON.parse(storedPatient) as Omit<Patient, "createdAt"> & { createdAt: string }
+      return {
+        ...parsed,
+        createdAt: new Date(parsed.createdAt),
+      }
+    } catch {
+      return null
+    }
+  })
+  const [readings, setReadings] = useState<BloodPressureReading[]>(() => {
+    if (typeof window === "undefined") {
+      return []
+    }
+
     const storedReadings = localStorage.getItem("healthpulse_readings")
-
-    if (storedPatient) {
-      const parsed = JSON.parse(storedPatient)
-      parsed.createdAt = new Date(parsed.createdAt)
-      setPatient(parsed)
+    if (!storedReadings) {
+      return []
     }
 
-    if (storedReadings) {
-      const parsed = JSON.parse(storedReadings)
-      const readingsWithDates = parsed.map((r: BloodPressureReading) => ({
-        ...r,
-        timestamp: new Date(r.timestamp),
+    try {
+      const parsed = JSON.parse(storedReadings) as Array<Omit<BloodPressureReading, "timestamp"> & { timestamp: string }>
+      return parsed.map((reading) => ({
+        ...reading,
+        timestamp: new Date(reading.timestamp),
       }))
-      setReadings(readingsWithDates)
+    } catch {
+      return []
     }
-
-    setIsLoaded(true)
-  }, [])
+  })
+  const [isDoctorLoggedIn, setIsDoctorLoggedIn] = useState(false)
+  const [currentDate, setCurrentDate] = useState(() => new Date())
 
   // Persist patient to localStorage
   useEffect(() => {
-    if (isLoaded && patient) {
+    if (patient) {
       localStorage.setItem("healthpulse_patient", JSON.stringify(patient))
     }
-  }, [patient, isLoaded])
+  }, [patient])
 
   // Persist readings to localStorage
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem("healthpulse_readings", JSON.stringify(readings))
-    }
-  }, [readings, isLoaded])
+    localStorage.setItem("healthpulse_readings", JSON.stringify(readings))
+  }, [readings])
 
   // Get readings status for a specific date
   const getReadingsForDate = (dateStr: string) => {
@@ -134,14 +146,18 @@ export function HealthProvider({ children }: { children: ReactNode }) {
 
   // Auto-advance to next day when all slots are filled
   useEffect(() => {
-    if (isLoaded && todayReadings.morning && todayReadings.afternoon && todayReadings.evening) {
+    if (todayReadings.morning && todayReadings.afternoon && todayReadings.evening) {
       // Check if we need to advance to next day
       const now = new Date()
       if (!isSameDay(currentDate, now)) {
-        setCurrentDate(now)
+        const timeoutId = window.setTimeout(() => {
+          setCurrentDate(now)
+        }, 0)
+
+        return () => window.clearTimeout(timeoutId)
       }
     }
-  }, [readings, isLoaded, todayReadings, currentDate])
+  }, [todayReadings, currentDate])
 
   // Also update current date at midnight
   useEffect(() => {
@@ -218,7 +234,7 @@ export function HealthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("healthpulse_readings")
   }
 
-  if (!isLoaded) {
+  if (typeof window === "undefined") {
     return null
   }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useHealth, TimeOfDay } from "@/lib/health-context"
 import {
   Dialog,
@@ -27,7 +27,7 @@ function getDateString(date: Date): string {
 }
 
 export function BPEntryDialog() {
-  const { addReading, getReadingsForDate, getNextAvailableSlotForDate, currentDate } = useHealth()
+  const { addReading, getReadingsForDate, getNextAvailableSlotForDate } = useHealth()
   const [open, setOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedTime, setSelectedTime] = useState<TimeOfDay | null>(null)
@@ -44,30 +44,39 @@ export function BPEntryDialog() {
   const allSlotsForDateComplete = !nextSlotForDate
   const today = startOfDay(new Date())
 
-  // Set default time slot when dialog opens or date changes
-  useEffect(() => {
-    if (open && nextSlotForDate) {
-      setSelectedTime(nextSlotForDate)
-    } else if (open && !nextSlotForDate) {
-      setSelectedTime(null)
-    }
-  }, [open, nextSlotForDate, selectedDateStr])
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
 
-  // Reset selected date when dialog opens
-  useEffect(() => {
-    if (open) {
-      setSelectedDate(new Date())
+    if (nextOpen) {
+      const todayDate = new Date()
+      const todayDateStr = getDateString(todayDate)
+      setSelectedDate(todayDate)
+      setSelectedTime(getNextAvailableSlotForDate(todayDateStr))
+      setErrors({})
     }
-  }, [open])
+  }
 
   const canGoForward = !isAfter(startOfDay(addDays(selectedDate, 1)), today)
 
   const navigateDate = (direction: "prev" | "next") => {
+    let nextDate = selectedDate
+
     if (direction === "prev") {
-      setSelectedDate(subDays(selectedDate, 1))
+      nextDate = subDays(selectedDate, 1)
     } else if (direction === "next" && canGoForward) {
-      setSelectedDate(addDays(selectedDate, 1))
+      nextDate = addDays(selectedDate, 1)
+    } else {
+      return
     }
+
+    const nextDateStr = getDateString(nextDate)
+    setSelectedDate(nextDate)
+    setSelectedTime(getNextAvailableSlotForDate(nextDateStr))
+    setErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.time
+      return nextErrors
+    })
   }
 
   const validateForm = (): boolean => {
@@ -123,8 +132,9 @@ export function BPEntryDialog() {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors((prev) => {
-        const { [field]: _, ...rest } = prev
-        return rest
+        const nextErrors = { ...prev }
+        delete nextErrors[field]
+        return nextErrors
       })
     }
   }
@@ -157,7 +167,7 @@ export function BPEntryDialog() {
   const isToday = getDateString(selectedDate) === getDateString(new Date())
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" />

@@ -43,7 +43,7 @@ export function ReadingsHistory({ readings }: ReadingsHistoryProps) {
       <CardContent className="p-0">
         <ScrollArea className="h-[280px] px-6 pb-6">
           <div className="space-y-3">
-            {readings.map((reading, index) => (
+            {readings.map((reading) => (
               <div
                 key={reading.id}
                 className="flex items-center justify-between rounded-lg bg-secondary p-3"

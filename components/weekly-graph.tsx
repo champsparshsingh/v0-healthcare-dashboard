@@ -1,9 +1,9 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
-import { useHealth, BloodPressureReading } from "@/lib/health-context"
+import { useHealth } from "@/lib/health-context"
 import { format, subDays, parseISO } from "date-fns"
 import { useMemo } from "react"
 
@@ -141,7 +141,7 @@ export function WeeklyGraph() {
                 dx={-10}
               />
               <ChartTooltip 
-                content={({ active, payload, label }) => {
+                content={({ active, payload }) => {
                   if (!active || !payload || !payload.length) return null
                   
                   const data = payload[0]?.payload as DayData
