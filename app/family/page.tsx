@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Trash2, ShieldAlert } from 'lucide-react';
 
